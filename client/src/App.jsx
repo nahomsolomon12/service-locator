@@ -274,8 +274,14 @@ function App() {
               </select>
               <button type="submit" disabled={loading}>Search</button>
             </form>
-            <button type="button" className="add-event-button" onClick={() => setIsEventFormOpen(true)}>
-              Add an event
+            <button
+              type="button"
+              className="add-event-button"
+              onClick={() => setIsEventFormOpen(true)}
+              aria-label="Add an event"
+              title="Add an event"
+            >
+              <span aria-hidden="true">+</span>
             </button>
           </div>
         </header>
@@ -313,8 +319,14 @@ function App() {
 
   return (
     <main className="finder">
-      <button type="button" className="add-event-button home-add-event" onClick={() => setIsEventFormOpen(true)}>
-        Add an event
+      <button
+        type="button"
+        className="add-event-button home-add-event"
+        onClick={() => setIsEventFormOpen(true)}
+        aria-label="Add an event"
+        title="Add an event"
+      >
+        <span aria-hidden="true">+</span>
       </button>
       <h1>EOTC Service Finder</h1>
       <form className="search-form" onSubmit={submitSearch}>
