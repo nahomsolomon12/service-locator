@@ -100,12 +100,14 @@ function App() {
     const params = new URLSearchParams(window.location.search)
     const zip = params.get('zip')
     if (window.location.pathname === '/results' && /^\d{5}$/.test(zip || '')) {
-      searchServices(
-        zip,
-        params.get('category') || 'All activities',
-        params.get('radius') || '25',
-        params.get('accessible') === '1',
-      )
+      queueMicrotask(() => {
+        searchServices(
+          zip,
+          params.get('category') || 'All activities',
+          params.get('radius') || '25',
+          params.get('accessible') === '1',
+        )
+      })
     }
 
     const onPopState = () => {
