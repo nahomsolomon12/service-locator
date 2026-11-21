@@ -58,6 +58,33 @@ function haversineMiles(first, second) {
   return 2 * earthRadiusMiles * Math.asin(Math.sqrt(haversine))
 }
 
+async function queryOverpass(query) {
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+  ]
+  let lastError
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(`${endpoint}?${new URLSearchParams({ data: query })}`, {
+        headers: { 'User-Agent': 'EOTC-Service-Finder/1.0' },
+        signal: AbortSignal.timeout(15000),
+      })
+      if (!response.ok) {
+        lastError = new Error(`Overpass returned ${response.status}`)
+        continue
+      }
+      return response.json()
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('Unable to search nearby services.')
+}
+
 app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok' })
 })
@@ -66,6 +93,7 @@ app.get('/api/services', async (request, response) => {
   const zip = String(request.query.zip || '')
   const category = String(request.query.category || 'All activities')
   const radius = Number(request.query.radius || 25)
+  const accessibleOnly = request.query.accessible === '1'
 
   if (!/^\d{5}$/.test(zip)) {
     return response.status(400).json({ error: 'A valid 5-digit ZIP code is required.' })
@@ -76,7 +104,7 @@ app.get('/api/services', async (request, response) => {
 
   try {
     const location = await geocodeZip(zip)
-    const cacheKey = `services:${zip}:${category}:${radius}`
+    const cacheKey = `services:${zip}:${category}:${radius}:${accessibleOnly}`
     if (cache.has(cacheKey)) {
       return response.json(cache.get(cacheKey))
     }
@@ -97,23 +125,12 @@ app.get('/api/services', async (request, response) => {
       );
       out center tags;`
 
-    const overpassResponse = await fetch('https://overpass-api.de/api/interpreter', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'EOTC-Service-Finder/1.0',
-      },
-      body: new URLSearchParams({ data: query }),
-      signal: AbortSignal.timeout(25000),
-    })
-    if (overpassResponse.status === 429) {
-      throw new Error('Service search is temporarily limited. Please try again.')
+    let overpass
+    try {
+      overpass = await queryOverpass(query)
+    } catch {
+      throw new Error('Nearby service search is temporarily unavailable. Please try again.')
     }
-    if (!overpassResponse.ok) {
-      throw new Error('Unable to search nearby services.')
-    }
-
-    const overpass = await overpassResponse.json()
     let services = (overpass.elements || []).flatMap((element) => {
       const lat = element.lat ?? element.center?.lat
       const lon = element.lon ?? element.center?.lon
@@ -130,6 +147,7 @@ app.get('/api/services', async (request, response) => {
       ].filter(Boolean).join(' ').toLowerCase()
 
       if (terms && !terms.some((term) => searchableText.includes(term))) return []
+      if (accessibleOnly && !['yes', 'limited'].includes(String(tags.wheelchair || '').toLowerCase())) return []
 
       const addressParts = [
         tags['addr:housenumber'],
@@ -151,6 +169,7 @@ app.get('/api/services', async (request, response) => {
         denomination: tags.denomination || null,
         phone: tags.phone || tags['contact:phone'] || null,
         website: tags.website || tags['contact:website'] || null,
+        wheelchair: tags.wheelchair || 'unknown',
         scheduleStatus: tags.service_times
           ? 'Service times provided'
           : 'Service times not provided',
@@ -166,12 +185,15 @@ app.get('/api/services', async (request, response) => {
       location,
       radius,
       category,
+      accessibleOnly,
       services,
     }
     cache.set(cacheKey, payload)
     return response.json(payload)
   } catch (error) {
-    return response.status(404).json({ error: error.message })
+    const message = error instanceof Error ? error.message : 'Unable to complete the search.'
+    const status = message.includes('ZIP code not found') ? 404 : 502
+    return response.status(status).json({ error: message })
   }
 })
 
