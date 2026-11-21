@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import './App.css'
@@ -63,6 +63,39 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const searchServices = useCallback(async (
+    zip,
+    selectedCategory = 'All activities',
+    selectedRadius = '25',
+    accessible = false,
+  ) => {
+    setLoading(true)
+    setError('')
+
+    try {
+      const params = new URLSearchParams({
+        zip,
+        category: selectedCategory,
+        radius: selectedRadius,
+        accessible: accessible ? '1' : '0',
+      })
+      const response = await fetch(`/api/services?${params}`)
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error || 'Unable to find services.')
+      if (body.services.length === 0) {
+        setResults(body)
+        setError(`No matching services within ${body.radius} miles.`)
+        return
+      }
+      setResults(body)
+    } catch (requestError) {
+      setError(requestError.message)
+      setResults(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const zip = params.get('zip')
@@ -98,35 +131,7 @@ function App() {
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [])
-
-  async function searchServices(zip, selectedCategory = category, selectedRadius = radius, accessible = accessibleOnly) {
-    setLoading(true)
-    setError('')
-
-    try {
-      const params = new URLSearchParams({
-        zip,
-        category: selectedCategory,
-        radius: selectedRadius,
-        accessible: accessible ? '1' : '0',
-      })
-      const response = await fetch(`/api/services?${params}`)
-      const body = await response.json()
-      if (!response.ok) throw new Error(body.error || 'Unable to find services.')
-      if (body.services.length === 0) {
-        setResults(body)
-        setError(`No matching services within ${body.radius} miles.`)
-        return
-      }
-      setResults(body)
-    } catch (requestError) {
-      setError(requestError.message)
-      setResults(null)
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [searchServices])
 
   function submitSearch(event) {
     event.preventDefault()
