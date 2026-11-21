@@ -220,6 +220,8 @@ function App() {
                 <div>
                   <h2>{service.name}</h2>
                   <p>{service.address}</p>
+                  {service.phone && <p>{service.phone}</p>}
+                  <p>{service.scheduleStatus}</p>
                 </div>
                 <span>{service.distance} mi</span>
               </article>
