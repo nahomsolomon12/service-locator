@@ -219,8 +219,8 @@ function App() {
         <section className="results-layout">
           <div className="results-list">
             <p className="eyebrow">Results near {zipCode}</p>
-            <h1>Available services</h1>
-            {loading && <p className="status-message">Finding nearby services...</p>}
+            <h1>Ethiopian Orthodox churches</h1>
+            {loading && <p className="status-message">Finding Ethiopian Orthodox churches...</p>}
             {error && <p className="status-message error" role="alert">{error}</p>}
             {!loading && results && results.services.map((service) => (
               <article className="service-card" key={service.id}>
