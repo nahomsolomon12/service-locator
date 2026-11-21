@@ -169,7 +169,6 @@ app.get('/api/services', async (request, response) => {
   const zip = String(request.query.zip || '')
   const category = String(request.query.category || 'All activities')
   const radius = Number(request.query.radius || 25)
-  const accessibleOnly = request.query.accessible === '1'
 
   if (!/^\d{5}$/.test(zip)) {
     return response.status(400).json({ error: 'A valid 5-digit ZIP code is required.' })
@@ -180,7 +179,7 @@ app.get('/api/services', async (request, response) => {
 
   try {
     const location = await geocodeZip(zip)
-    const cacheKey = `services:${zip}:${category}:${radius}:${accessibleOnly}`
+    const cacheKey = `services:${zip}:${category}:${radius}`
     if (cache.has(cacheKey)) {
       return response.json(cache.get(cacheKey))
     }
@@ -214,22 +213,8 @@ app.get('/api/services', async (request, response) => {
           location,
           radius,
           category,
-          accessibleOnly,
           searchType: 'Ethiopian Orthodox Tewahedo churches',
           services: fallbackServices,
-        }
-        cache.set(cacheKey, payload)
-        return response.json(payload)
-      }
-      if (accessibleOnly) {
-        const payload = {
-          zip,
-          location,
-          radius,
-          category,
-          accessibleOnly,
-          searchType: 'Ethiopian Orthodox Tewahedo churches',
-          services: [],
         }
         cache.set(cacheKey, payload)
         return response.json(payload)
@@ -270,7 +255,6 @@ app.get('/api/services', async (request, response) => {
         tags['opening_hours:matins'],
       ].filter(Boolean).join(' ').toLowerCase()
       if (terms && !terms.some((term) => searchableText.includes(term))) return []
-      if (accessibleOnly && !['yes', 'limited'].includes(String(tags.wheelchair || '').toLowerCase())) return []
 
       const addressParts = [
         tags['addr:housenumber'],
@@ -308,7 +292,6 @@ app.get('/api/services', async (request, response) => {
       location,
       radius,
       category,
-      accessibleOnly,
       searchType: 'Ethiopian Orthodox Tewahedo churches',
       services,
     }
