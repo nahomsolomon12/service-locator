@@ -85,6 +85,82 @@ async function queryOverpass(query) {
   throw lastError || new Error('Unable to search nearby services.')
 }
 
+async function queryNominatimChurches(location, radius) {
+  const latitudeRadius = radius / 69
+  const longitudeRadius = radius / (69 * Math.max(Math.cos(location.lat * Math.PI / 180), 0.3))
+  const west = location.lon - longitudeRadius
+  const east = location.lon + longitudeRadius
+  const north = location.lat + latitudeRadius
+  const south = location.lat - latitudeRadius
+  const url = `https://nominatim.openstreetmap.org/search?` +
+    new URLSearchParams({
+      q: 'Ethiopian Orthodox Tewahedo church',
+      countrycodes: 'us',
+      format: 'jsonv2',
+      addressdetails: '1',
+      extratags: '1',
+      namedetails: '1',
+      limit: '50',
+      viewbox: `${west},${north},${east},${south}`,
+      bounded: '1',
+    })
+
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'EOTC-Service-Finder/1.0' },
+    signal: AbortSignal.timeout(10000),
+  })
+  if (!response.ok) {
+    throw new Error('Nearby service search is temporarily unavailable.')
+  }
+
+  const matches = await response.json()
+  return (Array.isArray(matches) ? matches : []).flatMap((match) => {
+    const lat = Number(match.lat)
+    const lon = Number(match.lon)
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return []
+
+    const identityText = [
+      match.name,
+      match.display_name,
+      match.namedetails?.name,
+      match.namedetails?.['name:en'],
+      match.extratags?.denomination,
+      match.extratags?.religion,
+    ].filter(Boolean).join(' ').toLowerCase()
+
+    if (!/(ethiopian orthodox|ethiopian tewahedo|tewahedo|ተዋሕዶ|ኢትዮጵያ)/i.test(identityText)) return []
+
+    const distance = haversineMiles(location, { lat, lon })
+    if (distance > radius) return []
+
+    const address = match.address || {}
+    const addressParts = [
+      address.house_number,
+      address.road,
+      address.city || address.town || address.village,
+      address.state,
+      address.postcode,
+    ].filter(Boolean)
+
+    return [{
+      id: `osm-${match.osm_type}-${match.osm_id}`,
+      name: match.name || match.display_name || 'Ethiopian Orthodox church',
+      address: addressParts.join(', ') || 'Address not provided',
+      distance: Number(distance.toFixed(1)),
+      lat,
+      lon,
+      denomination: match.extratags?.denomination || 'Ethiopian Orthodox Tewahedo',
+      phone: match.extratags?.phone || match.extratags?.['contact:phone'] || null,
+      website: match.extratags?.website || match.extratags?.['contact:website'] || null,
+      wheelchair: match.extratags?.wheelchair || 'unknown',
+      scheduleStatus: 'Schedule not verified',
+      schedule: null,
+      source: 'OpenStreetMap',
+      osmUrl: `https://www.openstreetmap.org/${match.osm_type}/${match.osm_id}`,
+    }]
+  })
+}
+
 app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok' })
 })
@@ -130,7 +206,34 @@ app.get('/api/services', async (request, response) => {
     try {
       overpass = await queryOverpass(query)
     } catch {
-      throw new Error('Nearby service search is temporarily unavailable. Please try again.')
+      overpass = { elements: [] }
+      const fallbackServices = await queryNominatimChurches(location, radius)
+      if (fallbackServices.length > 0) {
+        const payload = {
+          zip,
+          location,
+          radius,
+          category,
+          accessibleOnly,
+          searchType: 'Ethiopian Orthodox Tewahedo churches',
+          services: fallbackServices,
+        }
+        cache.set(cacheKey, payload)
+        return response.json(payload)
+      }
+      if (accessibleOnly) {
+        const payload = {
+          zip,
+          location,
+          radius,
+          category,
+          accessibleOnly,
+          searchType: 'Ethiopian Orthodox Tewahedo churches',
+          services: [],
+        }
+        cache.set(cacheKey, payload)
+        return response.json(payload)
+      }
     }
     let services = (overpass.elements || []).flatMap((element) => {
       const lat = element.lat ?? element.center?.lat
