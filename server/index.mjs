@@ -120,8 +120,9 @@ app.get('/api/services', async (request, response) => {
     const terms = categoryTerms[category]
     const query = `[out:json][timeout:25];
       (
-        nwr["amenity"="place_of_worship"](around:${radiusMeters},${location.lat},${location.lon});
-        nwr["building"="church"](around:${radiusMeters},${location.lat},${location.lon});
+        nwr["amenity"="place_of_worship"]["religion"="christian"](around:${radiusMeters},${location.lat},${location.lon});
+        nwr["amenity"="place_of_worship"]["name"~"Ethiopian|Tewahedo|ተዋሕዶ|ኢትዮጵያ",i](around:${radiusMeters},${location.lat},${location.lon});
+        nwr["building"="church"]["denomination"~"ethiopian|tewahedo",i](around:${radiusMeters},${location.lat},${location.lon});
       );
       out center tags;`
 
@@ -138,14 +139,33 @@ app.get('/api/services', async (request, response) => {
 
       const tags = element.tags || {}
       const name = tags.name || tags['name:en'] || 'Unnamed place of worship'
-      const searchableText = [
+      const identityText = [
         name,
+        tags['name:en'],
+        tags['alt_name'],
+        tags['old_name'],
         tags.description,
         tags.note,
         tags.denomination,
-        tags.service_times,
+        tags['denomination:en'],
+        tags.operator,
+        tags.brand,
       ].filter(Boolean).join(' ').toLowerCase()
 
+      const ethiopianIdentity =
+        /ethiopian orthodox|ethiopian tewahedo|ethiopian|tewahedo|ሰንበት\s+ቤተ|ተዋሕዶ|ኢትዮጵያ/.test(identityText) ||
+        /ethiopian|tewahedo/.test(String(tags.denomination || '').toLowerCase())
+
+      if (!ethiopianIdentity) return []
+
+      const searchableText = [
+        identityText,
+        tags.service_times,
+        tags.opening_hours,
+        tags['opening_hours:mass'],
+        tags['opening_hours:vespers'],
+        tags['opening_hours:matins'],
+      ].filter(Boolean).join(' ').toLowerCase()
       if (terms && !terms.some((term) => searchableText.includes(term))) return []
       if (accessibleOnly && !['yes', 'limited'].includes(String(tags.wheelchair || '').toLowerCase())) return []
 
@@ -186,6 +206,7 @@ app.get('/api/services', async (request, response) => {
       radius,
       category,
       accessibleOnly,
+      searchType: 'Ethiopian Orthodox Tewahedo churches',
       services,
     }
     cache.set(cacheKey, payload)
